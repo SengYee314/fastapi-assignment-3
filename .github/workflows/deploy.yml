@@ -1,0 +1,60 @@
+name: CI/CD Deployment Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:latest
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Pull the new image using the commit SHA tag
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
+            
+            # Stop and remove the old container if it exists
+            docker stop fastapi-app || true
+            docker rm fastapi-app || true
+            
+            # Run the new container, mapping port 80 on EC2 to port 8000 in the container
+            docker run -d --name fastapi-app -p 80:8000 ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
+
+      - name: Verify Health Check Endpoint
+        run: |
+          # Wait a few seconds for the container to start up completely
+          sleep 5
+          # Test the /health endpoint and verify HTTP 200 response
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.EC2_HOST }}/health)
+          echo "Health check HTTP status: $response"
+          if [ "$response" -ne 200 ]; then
+            echo "Health check failed with status $response"
+            exit 1
+          fi
