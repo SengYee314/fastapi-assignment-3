@@ -10,13 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -31,21 +31,19 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:latest
 
       - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             # Pull the new image using the commit SHA tag
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
-            
-            # Stop and remove the old container if it exists
-            docker stop fastapi-app || true
-            docker rm fastapi-app || true
-            
-            # Run the new container, mapping port 80 on EC2 to port 8000 in the container
-            docker run -d --name fastapi-app -p 80:8000 ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
+
+            sudo docker stop fastapi-app || true
+            sudo docker rm fastapi-app || true
+
+            sudo docker run -d --name fastapi-app -p 80:8000 ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-assignment-3:${{ github.sha }}
 
       - name: Verify Health Check Endpoint
         run: |
